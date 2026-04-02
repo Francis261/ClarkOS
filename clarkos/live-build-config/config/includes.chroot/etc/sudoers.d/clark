@@ -1,0 +1,2 @@
+clark ALL=(ALL) NOPASSWD: /usr/sbin/shutdown
+clark ALL=(ALL) NOPASSWD: /usr/sbin/reboot

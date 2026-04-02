@@ -1,0 +1,16 @@
+#!/bin/bash
+set -e
+
+lb config noauto \
+    --architectures amd64 \
+    --bootloader grub-efi \
+    --binary-filesystem ext4 \
+    --distribution stable \
+    --iso-volume "ClarkOS" \
+    --apt-indices false \
+    --zsync false \
+    --quiet \
+    --bootappend-live "boot=live components quiet splash" \
+    --archive-areas "main" \
+    --firmware-chroot false \
+    --memtest none

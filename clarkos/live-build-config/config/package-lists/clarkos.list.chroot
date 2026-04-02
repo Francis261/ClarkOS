@@ -1,0 +1,5 @@
+# Minimal package list - core system only for fast builds
+systemd
+systemd-sysv
+sudo
+nano

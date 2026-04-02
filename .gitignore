@@ -1,0 +1,26 @@
+# Build artifacts
+live-build-config/chroot/
+live-build-config/chroot.tmp/
+live-build-config/binary/
+live-build-config/.build/
+live-build-config/cache/
+live-build-config/stage/
+live-build-config/local/
+
+# Tauri build
+tauri-desktop/src-tauri/target/
+tauri-desktop/dist/
+tauri-desktop/node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
