@@ -2,10 +2,7 @@ name: Build ClarkOS ISO
 
 on:
   push:
-    branches: [main, master]
-    tags: ['v*']
-  pull_request:
-    branches: [main, master]
+    branches: [main]
   workflow_dispatch:
 
 env:
@@ -16,104 +13,78 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     container:
-      image: debian:bookworm-slim
+      image: debian:bookworm
       options: --privileged
-      env:
-        DEBIAN_FRONTEND: noninteractive
 
     steps:
-      - name: Install build dependencies
-        run: |
-          apt-get update && apt-get install -y --no-install-recommends \
-            live-build sudo debootstrap \
-            grub-efi-amd64-bin squashfs-tools \
-            xorriso syslinux-common dosfstools uuid-runtime
-
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            live-build debootstrap \
+            grub-efi-amd64-bin grub-pc-bin \
+            syslinux isolinux \
+            squashfs-tools xorriso \
+            dosfstools sudo
+
+      - name: Prepare live-build config
+        run: |
+          mkdir -p clarkos/live-build-config
+          cd clarkos/live-build-config
+
+          lb clean || true
+
+          mkdir -p config/package-lists
+
+          echo "systemd" > config/package-lists/clarkos.list.chroot
+          echo "systemd-sysv" >> config/package-lists/clarkos.list.chroot
+          echo "sudo" >> config/package-lists/clarkos.list.chroot
+          echo "nano" >> config/package-lists/clarkos.list.chroot
 
       - name: Configure live-build
         run: |
           cd clarkos/live-build-config
-          rm -rf config auto .build cache chroot chroot.tmp binary stage 2>/dev/null || true
-          mkdir -p config/package-lists auto
 
-      - name: Write package list
-        run: |
-          cat > clarkos/live-build-config/config/package-lists/clarkos.list.chroot << 'PACKAGES'
-systemd
-systemd-sysv
-sudo
-nano
-PACKAGES
+          lb config \
+            --architectures amd64 \
+            --distribution bookworm \
+            --bootloader "grub-efi syslinux" \
+            --binary-images iso-hybrid \
+            --iso-volume "ClarkOS" \
+            --apt-indices false
 
-      - name: Write auto scripts
-        run: |
-          cat > clarkos/live-build-config/auto/config << 'CONFIG'
-#!/bin/bash
-set -e
-lb config noauto \
-    --architectures amd64 \
-    --bootloader grub-efi \
-    --binary-filesystem ext4 \
-    --distribution stable \
-    --iso-volume "ClarkOS" \
-    --apt-indices false \
-    --zsync false \
-    --quiet
-CONFIG
-
-          cat > clarkos/live-build-config/auto/build << 'BUILD'
-#!/bin/bash
-set -e
-lb build "$@"
-BUILD
-
-          chmod +x clarkos/live-build-config/auto/config clarkos/live-build-config/auto/build
-
-      - name: Create systemd overrides
+      - name: Add autologin (optional)
         run: |
           mkdir -p clarkos/live-build-config/config/includes.chroot/etc/systemd/system/getty@tty1.service.d
-          cat > clarkos/live-build-config/config/includes.chroot/etc/systemd/system/getty@tty1.service.d/override.conf << 'TTYCONF'
-[Service]
-Type=simple
-ExecStart=
-ExecStart=-/sbin/agetty --autologin root --noclear %I 38400 linux
-TTYCONF
 
-      - name: Bootstrap
-        run: |
-          cd clarkos/live-build-config && lb bootstrap
+          echo "[Service]" > clarkos/live-build-config/config/includes.chroot/etc/systemd/system/getty@tty1.service.d/override.conf
+          echo "ExecStart=" >> clarkos/live-build-config/config/includes.chroot/etc/systemd/system/getty@tty1.service.d/override.conf
+          echo "ExecStart=-/sbin/agetty --autologin root --noclear %I 38400 linux" >> clarkos/live-build-config/config/includes.chroot/etc/systemd/system/getty@tty1.service.d/override.conf
 
-      - name: Build binary
-        run: |
-          cd clarkos/live-build-config && lb binary
-
-      - name: Build source
-        run: |
-          cd clarkos/live-build-config && lb source || true
-
-      - name: Find and rename ISO
-        id: iso
+      - name: Build ISO
         run: |
           cd clarkos/live-build-config
-          ISO_FILE=$(find . -maxdepth 2 -name "*.iso" -type f 2>/dev/null | head -1)
-          if [ -z "$ISO_FILE" ]; then
-            ISO_FILE=$(find . -name "*.hybrid.iso" -type f 2>/dev/null | head -1)
-          fi
-          if [ -n "$ISO_FILE" ]; then
-            cp "$ISO_FILE" "ClarkOS-${ISO_VERSION}-${ARCH}.iso"
-            echo "ISO created: $(du -h ClarkOS-${ISO_VERSION}-${ARCH}.iso | cut -f1)"
+          lb build
+
+      - name: Rename ISO
+        run: |
+          cd clarkos/live-build-config
+
+          if [ -f binary.hybrid.iso ]; then
+            mv binary.hybrid.iso ClarkOS-${ISO_VERSION}-${ARCH}.iso
           else
-            echo "No ISO found"
-            ls -la binary/ 2>/dev/null || true
+            echo "ISO not found!"
+            ls -la
             exit 1
           fi
 
-      - name: Upload ISO
+      - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
-          name: clarkos-iso
+          name: ClarkOS-ISO
           path: clarkos/live-build-config/ClarkOS-*.iso
-          retention-days: 14
